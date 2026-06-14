@@ -1,0 +1,194 @@
+"""
+DocuGuard Unit Tests
+Run with: python -m pytest tests/ -v
+"""
+
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+
+import pytest
+import hashlib
+import hmac as hmac_lib
+from crypto_engine import CryptoEngine
+from document_store import DocumentStore
+
+
+SECRET = "test-secret-key"
+engine = CryptoEngine(SECRET)
+
+
+# ─── CryptoEngine Tests ───────────────────────────────────
+
+class TestSHA256:
+    def test_known_hash(self):
+        data = b"hello world"
+        expected = hashlib.sha256(data).hexdigest()
+        assert engine.sha256(data) == expected
+
+    def test_empty_bytes(self):
+        result = engine.sha256(b"")
+        assert len(result) == 64
+
+    def test_deterministic(self):
+        data = b"same input"
+        assert engine.sha256(data) == engine.sha256(data)
+
+    def test_avalanche_effect(self):
+        """Single byte change must produce completely different hash."""
+        h1 = engine.sha256(b"hello world")
+        h2 = engine.sha256(b"hello World")  # capital W
+        assert h1 != h2
+        # At least 30% of the hex chars should differ
+        differences = sum(1 for a, b in zip(h1, h2) if a != b)
+        assert differences > 20
+
+
+class TestHMAC:
+    def test_known_hmac(self):
+        data = b"test document"
+        expected = hmac_lib.new(SECRET.encode(), data, hashlib.sha256).hexdigest()
+        assert engine.hmac_sha256(data) == expected
+
+    def test_different_keys_differ(self):
+        data = b"document"
+        engine2 = CryptoEngine("different-key")
+        assert engine.hmac_sha256(data) != engine2.hmac_sha256(data)
+
+    def test_same_key_consistent(self):
+        data = b"document"
+        assert engine.hmac_sha256(data) == engine.hmac_sha256(data)
+
+
+class TestSHA3:
+    def test_length(self):
+        result = engine.sha3_256(b"test")
+        assert len(result) == 64
+
+    def test_differs_from_sha256(self):
+        data = b"same input"
+        assert engine.sha256(data) != engine.sha3_256(data)
+
+
+class TestDocumentID:
+    def test_format(self):
+        doc_id = engine.generate_doc_id("abc123", "test.pdf")
+        assert doc_id.startswith("DG-")
+        assert len(doc_id) == 35  # "DG-" + 32 chars
+
+    def test_reproducible(self):
+        h = "abc123def456"
+        assert engine.generate_doc_id(h, "file.pdf") == engine.generate_doc_id(h, "file.pdf")
+
+    def test_filename_matters(self):
+        h = "abc123"
+        id1 = engine.generate_doc_id(h, "file1.pdf")
+        id2 = engine.generate_doc_id(h, "file2.pdf")
+        assert id1 != id2
+
+
+class TestFingerprint:
+    def test_all_fields_present(self):
+        result = engine.generate_fingerprint(b"test content", "test.pdf")
+        required = ['doc_id', 'sha256', 'sha3_256', 'hmac', 'md5', 'file_size_bytes']
+        for field in required:
+            assert field in result, f"Missing field: {field}"
+
+    def test_file_size(self):
+        data = b"exactly 10 bytes!!"
+        result = engine.generate_fingerprint(data, "f.txt")
+        assert result['file_size_bytes'] == len(data)
+
+    def test_tamper_detection(self):
+        original = b"original document content"
+        tampered = b"Original document content"  # capital O
+        r1 = engine.generate_fingerprint(original, "doc.txt")
+        r2 = engine.generate_fingerprint(tampered, "doc.txt")
+        assert r1['sha256'] != r2['sha256']
+        assert r1['hmac'] != r2['hmac']
+        assert r1['doc_id'] != r2['doc_id']
+
+
+class TestMerkleRoot:
+    def test_single_hash(self):
+        root = engine.compute_merkle_root(["abc"])
+        assert isinstance(root, str)
+        assert len(root) == 64
+
+    def test_empty_list(self):
+        root = engine.compute_merkle_root([])
+        assert root == hashlib.sha256(b'').hexdigest()
+
+    def test_two_hashes(self):
+        h1 = engine.sha256(b"doc1")
+        h2 = engine.sha256(b"doc2")
+        root = engine.compute_merkle_root([h1, h2])
+        assert len(root) == 64
+        assert root != h1
+        assert root != h2
+
+    def test_deterministic(self):
+        hashes = [engine.sha256(f"doc{i}".encode()) for i in range(4)]
+        root1 = engine.compute_merkle_root(hashes)
+        root2 = engine.compute_merkle_root(hashes)
+        assert root1 == root2
+
+    def test_order_matters(self):
+        hashes = [engine.sha256(f"doc{i}".encode()) for i in range(4)]
+        root1 = engine.compute_merkle_root(hashes)
+        root2 = engine.compute_merkle_root(list(reversed(hashes)))
+        assert root1 != root2
+
+
+# ─── DocumentStore Tests ─────────────────────────────────
+
+class TestDocumentStore:
+    def setup_method(self):
+        """Fresh store for each test."""
+        self.store = DocumentStore("data/test_registry.json")
+        self.store._data = {}  # Clear in memory
+
+    def test_register_and_retrieve(self):
+        record = {
+            'doc_id': 'DG-TEST001',
+            'file_name': 'test.pdf',
+            'sha256': 'abc123',
+            'hmac': 'def456',
+            'sha3_256': 'ghi789',
+            'registered_at': '2025-01-01T00:00:00Z',
+            'username': 'testuser'
+        }
+        self.store.register('user1', 'DG-TEST001', record)
+        found = self.store.find_by_doc_id('DG-TEST001')
+        assert found is not None
+        assert found['file_name'] == 'test.pdf'
+
+    def test_find_by_hash(self):
+        record = {'doc_id': 'DG-ABC', 'sha256': 'deadbeef', 'file_name': 'f.txt', 'hmac': '', 'sha3_256': ''}
+        self.store.register('user1', 'DG-ABC', record)
+        found = self.store.find_by_hash('deadbeef')
+        assert found is not None
+
+    def test_find_missing_hash(self):
+        assert self.store.find_by_hash('nonexistent') is None
+
+    def test_user_isolation(self):
+        r1 = {'doc_id': 'DG-U1', 'sha256': 'aaa', 'file_name': 'a.pdf', 'hmac': '', 'sha3_256': ''}
+        r2 = {'doc_id': 'DG-U2', 'sha256': 'bbb', 'file_name': 'b.pdf', 'hmac': '', 'sha3_256': ''}
+        self.store.register('user1', 'DG-U1', r1)
+        self.store.register('user2', 'DG-U2', r2)
+        assert len(self.store.get_user_docs('user1')) == 1
+        assert len(self.store.get_user_docs('user2')) == 1
+
+    def test_delete(self):
+        record = {'doc_id': 'DG-DEL', 'sha256': 'xyz', 'file_name': 'd.pdf', 'hmac': '', 'sha3_256': ''}
+        self.store.register('user1', 'DG-DEL', record)
+        assert self.store.delete_doc('user1', 'DG-DEL') is True
+        assert self.store.find_by_doc_id('DG-DEL') is None
+
+    def test_stats(self):
+        r = {'doc_id': 'DG-S1', 'sha256': 's1', 'file_name': 's.pdf', 'hmac': '', 'sha3_256': ''}
+        self.store.register('user1', 'DG-S1', r)
+        stats = self.store.stats()
+        assert stats['total_users'] >= 1
+        assert stats['total_documents'] >= 1
