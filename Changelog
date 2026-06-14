@@ -1,0 +1,38 @@
+# Changelog
+
+All notable changes to DocuGuard are documented here.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+---
+
+## [1.0.0] — 2025-06-13
+
+### 🎉 Initial Release
+
+#### Added
+- **Telegram Bot** with full async handlers using `python-telegram-bot` v21
+- **SHA-256** document fingerprinting
+- **HMAC-SHA256** authenticated signatures with secret key
+- **SHA3-256 (Keccak)** secondary fingerprint
+- **Merkle Tree** implementation for batch document verification
+- **Document ID** derivation: `SHA256(hash + filename + secret)`
+- **Register** command — stores fingerprint in local JSON registry
+- **Verify** command — detects authentic vs tampered documents
+- **Certificate of Authenticity** — formatted digital certificate per document
+- **My Stats** — per-user document vault overview
+- **CLI Demo** — test all crypto operations without Telegram
+- **Inline keyboard** UX for guided register/verify flow
+- **Tamper detection** with side-by-side hash comparison output
+- **Timing-safe comparison** using `hmac.compare_digest()`
+
+---
+
+## [Upcoming] — Future
+
+### Planned
+- RSA digital signature support (asymmetric crypto)
+- PDF certificate with embedded QR code
+- PostgreSQL backend for production scale
+- Webhook deployment mode
+- Docker containerization
+- REST API wrapper
