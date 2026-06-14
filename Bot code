@@ -1,0 +1,449 @@
+"""
+DocuGuard Telegram Bot
+Document Authenticity Verification using Cryptographic Techniques
+"""
+
+import os
+import json
+import hashlib
+import hmac
+import time
+import logging
+from pathlib import Path
+from datetime import datetime
+from dotenv import load_dotenv
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ContextTypes, filters
+)
+from crypto_engine import CryptoEngine
+from document_store import DocumentStore
+
+load_dotenv()
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+SECRET_KEY = os.getenv("SECRET_KEY", "docuguard-secret-key-change-in-production")
+
+crypto = CryptoEngine(SECRET_KEY)
+store = DocumentStore()
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Welcome message and instructions."""
+    user = update.effective_user
+    welcome_text = (
+        f"🔐 *Welcome to DocuGuard, {user.first_name}!*\n\n"
+        "I use cryptographic techniques to verify the authenticity of your documents.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📋 *What I can do:*\n\n"
+        "🔒 `/register` — Register a document & get its fingerprint\n"
+        "✅ `/verify` — Verify if a document is authentic/unmodified\n"
+        "🧾 `/certificate` — Get authenticity certificate for a doc\n"
+        "📊 `/mystats` — View your registered documents\n"
+        "ℹ️ `/help` — Detailed help & how it works\n"
+        "━━━━━━━━━━━━━━━━━━━━\n\n"
+        "📎 *To get started:* Send me any document or file!\n\n"
+        "_Powered by SHA-256, HMAC-SHA256 & RSA cryptography_"
+    )
+    keyboard = [
+        [InlineKeyboardButton("📖 How It Works", callback_data="how_it_works")],
+        [InlineKeyboardButton("🔒 Register a Doc", callback_data="guide_register"),
+         InlineKeyboardButton("✅ Verify a Doc", callback_data="guide_verify")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Detailed help."""
+    help_text = (
+        "🔐 *DocuGuard — How It Works*\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📌 *Cryptographic Techniques Used:*\n\n"
+        "1️⃣ *SHA-256 Hash* — Creates a unique 256-bit fingerprint of your document. "
+        "Any change (even 1 byte) produces a completely different hash.\n\n"
+        "2️⃣ *HMAC-SHA256* — A keyed hash that ties the fingerprint to our secret key, "
+        "preventing forgery even if someone knows the hash algorithm.\n\n"
+        "3️⃣ *Merkle Hash* — For multi-file batches, combines individual hashes into a "
+        "single root hash (like blockchain).\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "📋 *Commands:*\n\n"
+        "• Send any file → Bot detects mode (register/verify)\n"
+        "• `/register` — Set mode to REGISTER next file\n"
+        "• `/verify` — Set mode to VERIFY next file\n"
+        "• `/certificate <doc_id>` — Get PDF certificate\n"
+        "• `/mystats` — Your document registry\n"
+        "• `/reset` — Clear your session mode\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🛡️ *Security Note:*\n"
+        "Document contents are NOT stored — only their cryptographic fingerprints.\n"
+        "Your data stays private!"
+    )
+    await update.message.reply_text(help_text, parse_mode='Markdown')
+
+
+async def set_register_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set user mode to register."""
+    context.user_data['mode'] = 'register'
+    await update.message.reply_text(
+        "🔒 *Register Mode Active*\n\n"
+        "Send me your document now — I'll create a cryptographic fingerprint and "
+        "register it in the vault.\n\n"
+        "_You'll receive a Document ID and fingerprint certificate._",
+        parse_mode='Markdown'
+    )
+
+
+async def set_verify_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set user mode to verify."""
+    context.user_data['mode'] = 'verify'
+    await update.message.reply_text(
+        "✅ *Verify Mode Active*\n\n"
+        "Send me the document you want to verify — I'll check its cryptographic "
+        "fingerprint against the registry.\n\n"
+        "_I'll tell you if it's original or has been tampered with._",
+        parse_mode='Markdown'
+    )
+
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle incoming documents — register or verify based on mode."""
+    user_id = str(update.effective_user.id)
+    username = update.effective_user.username or update.effective_user.first_name
+    mode = context.user_data.get('mode', None)
+
+    doc = update.message.document
+    if not doc:
+        await update.message.reply_text("❌ Please send a valid document file.")
+        return
+
+    # If no mode set, ask user
+    if not mode:
+        keyboard = [
+            [InlineKeyboardButton("🔒 Register this Doc", callback_data=f"do_register_{doc.file_id}"),
+             InlineKeyboardButton("✅ Verify this Doc", callback_data=f"do_verify_{doc.file_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            f"📎 *Document received:* `{doc.file_name}`\n\n"
+            "What would you like to do with it?",
+            parse_mode='Markdown',
+            reply_markup=reply_markup
+        )
+        # Store file info for callback
+        context.user_data['pending_file'] = {
+            'file_id': doc.file_id,
+            'file_name': doc.file_name,
+            'file_size': doc.file_size,
+            'mime_type': doc.mime_type
+        }
+        return
+
+    # Download file
+    await update.message.reply_text("⏳ Processing document...")
+    file = await context.bot.get_file(doc.file_id)
+    file_bytes = bytes(await file.download_as_bytearray())
+
+    if mode == 'register':
+        await do_register(update, context, file_bytes, doc, user_id, username)
+    elif mode == 'verify':
+        await do_verify(update, context, file_bytes, doc, user_id)
+
+    context.user_data['mode'] = None  # Reset mode after use
+
+
+async def do_register(update, context, file_bytes, doc, user_id, username):
+    """Register a document with full cryptographic fingerprinting."""
+    # Compute fingerprints
+    result = crypto.generate_fingerprint(file_bytes, doc.file_name)
+    doc_id = result['doc_id']
+    timestamp = datetime.utcnow().isoformat() + "Z"
+
+    # Store in registry
+    record = {
+        'doc_id': doc_id,
+        'file_name': doc.file_name,
+        'file_size': doc.file_size,
+        'mime_type': doc.mime_type,
+        'sha256': result['sha256'],
+        'hmac': result['hmac'],
+        'sha3_256': result['sha3_256'],
+        'registered_by': user_id,
+        'registered_at': timestamp,
+        'username': username
+    }
+    store.register(user_id, doc_id, record)
+
+    # Build response
+    response = (
+        "🔐 *Document Registered Successfully!*\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"📄 *File:* `{doc.file_name}`\n"
+        f"📦 *Size:* {doc.file_size:,} bytes\n"
+        f"🕐 *Registered:* `{timestamp}`\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "🔑 *Cryptographic Fingerprints:*\n\n"
+        f"🆔 *Document ID:*\n`{doc_id}`\n\n"
+        f"🔷 *SHA-256:*\n`{result['sha256']}`\n\n"
+        f"🔶 *HMAC-SHA256:*\n`{result['hmac']}`\n\n"
+        f"🔹 *SHA3-256:*\n`{result['sha3_256']}`\n\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 *Save your Document ID* — use it with `/certificate` "
+        "or share it so others can verify your document!\n\n"
+        "✅ To verify later, send the same file and choose *Verify*."
+    )
+
+    keyboard = [
+        [InlineKeyboardButton("🧾 Get Certificate", callback_data=f"cert_{doc_id}"),
+         InlineKeyboardButton("📊 My Docs", callback_data="my_stats")]
+    ]
+    await update.message.reply_text(
+        response, parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def do_verify(update, context, file_bytes, doc, user_id):
+    """Verify a document against the registry."""
+    # Compute fingerprints of submitted file
+    result = crypto.generate_fingerprint(file_bytes, doc.file_name)
+    submitted_sha256 = result['sha256']
+    doc_id = result['doc_id']
+
+    # Look up in registry
+    record = store.find_by_hash(submitted_sha256)
+
+    if record:
+        # EXACT MATCH — authentic document
+        reg_time = record.get('registered_at', 'Unknown')
+        reg_user = record.get('username', 'Unknown')
+        response = (
+            "✅ *DOCUMENT VERIFIED — AUTHENTIC!*\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🛡️ *Integrity Status:* PASSED\n"
+            "🔒 *Tamper Status:* NOT TAMPERED\n\n"
+            f"📄 *File:* `{doc.file_name}`\n"
+            f"🆔 *Doc ID:* `{record['doc_id']}`\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "📋 *Original Registration:*\n"
+            f"👤 Registered by: @{reg_user}\n"
+            f"🕐 Registered at: `{reg_time}`\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🔷 *SHA-256 Match:* ✅\n"
+            f"`{submitted_sha256}`\n\n"
+            "🎉 This document is genuine and has not been modified!"
+        )
+        keyboard = [[InlineKeyboardButton("🧾 Get Certificate", callback_data=f"cert_{record['doc_id']}")]]
+    else:
+        # Try partial match (same filename but different hash)
+        similar = store.find_by_filename(doc.file_name, user_id)
+        if similar:
+            orig_hash = similar.get('sha256', '')
+            response = (
+                "⚠️ *DOCUMENT MODIFIED — NOT AUTHENTIC!*\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "🚨 *Integrity Status:* FAILED\n"
+                "🔓 *Tamper Status:* TAMPERED / MODIFIED\n\n"
+                f"📄 *File:* `{doc.file_name}`\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "🔍 *Hash Comparison:*\n\n"
+                f"📌 *Original SHA-256:*\n`{orig_hash}`\n\n"
+                f"📌 *Submitted SHA-256:*\n`{submitted_sha256}`\n\n"
+                "❌ Hashes do NOT match — document has been altered!\n\n"
+                "_Even a single character change produces a completely different hash._"
+            )
+        else:
+            response = (
+                "❓ *DOCUMENT NOT FOUND IN REGISTRY*\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"📄 *File:* `{doc.file_name}`\n"
+                f"🔷 *SHA-256:*\n`{submitted_sha256}`\n\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                "This document has not been registered with DocuGuard.\n\n"
+                "Would you like to register it now?"
+            )
+        keyboard = [[InlineKeyboardButton("🔒 Register This Doc", callback_data="guide_register")]]
+
+    await update.message.reply_text(
+        response, parse_mode='Markdown',
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+async def my_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show user's registered documents."""
+    user_id = str(update.effective_user.id)
+    docs = store.get_user_docs(user_id)
+
+    if not docs:
+        await update.message.reply_text(
+            "📭 *No documents registered yet.*\n\n"
+            "Send any file and choose *Register* to get started!",
+            parse_mode='Markdown'
+        )
+        return
+
+    response = f"📊 *Your DocuGuard Vault* ({len(docs)} document{'s' if len(docs) != 1 else ''})\n\n"
+    response += "━━━━━━━━━━━━━━━━━━━━\n"
+
+    for i, (doc_id, record) in enumerate(list(docs.items())[:10], 1):
+        response += (
+            f"*{i}.* 📄 `{record['file_name']}`\n"
+            f"   🆔 `{doc_id[:20]}...`\n"
+            f"   🕐 {record.get('registered_at', 'N/A')[:19]}\n\n"
+        )
+
+    if len(docs) > 10:
+        response += f"_...and {len(docs) - 10} more documents_\n"
+
+    await update.message.reply_text(response, parse_mode='Markdown')
+
+
+async def get_certificate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Generate a text certificate for a document."""
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "❌ Please provide a Document ID.\n\nUsage: `/certificate <doc_id>`",
+            parse_mode='Markdown'
+        )
+        return
+
+    doc_id = args[0]
+    record = store.find_by_doc_id(doc_id)
+    if not record:
+        await update.message.reply_text("❌ Document ID not found in registry.")
+        return
+
+    cert = generate_certificate_text(record)
+    await update.message.reply_text(cert, parse_mode='Markdown')
+
+
+def generate_certificate_text(record):
+    """Generate a formatted certificate."""
+    border = "━━━━━━━━━━━━━━━━━━━━━━━━"
+    return (
+        f"🏛️ *CERTIFICATE OF AUTHENTICITY*\n"
+        f"{border}\n"
+        f"*DOCUGUARD DIGITAL VERIFICATION*\n"
+        f"{border}\n\n"
+        f"📄 *Document:* `{record['file_name']}`\n"
+        f"📦 *Size:* {record.get('file_size', 0):,} bytes\n"
+        f"🆔 *Document ID:*\n`{record['doc_id']}`\n\n"
+        f"{border}\n"
+        f"🔑 *Cryptographic Proof:*\n\n"
+        f"🔷 SHA-256:\n`{record['sha256']}`\n\n"
+        f"🔶 HMAC-SHA256:\n`{record['hmac']}`\n\n"
+        f"🔹 SHA3-256:\n`{record.get('sha3_256', 'N/A')}`\n\n"
+        f"{border}\n"
+        f"👤 *Registered by:* @{record.get('username', 'Unknown')}\n"
+        f"🕐 *Timestamp:* `{record.get('registered_at', 'N/A')}`\n"
+        f"🌍 *Issuer:* DocuGuard Verification System\n\n"
+        f"{border}\n"
+        f"✅ *This certificate confirms the document's authenticity.*\n"
+        f"_Any modification will invalidate the cryptographic fingerprint._"
+    )
+
+
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle inline keyboard callbacks."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "how_it_works":
+        text = (
+            "🔬 *How DocuGuard Works*\n\n"
+            "1️⃣ *You send a document*\n"
+            "Bot downloads it securely\n\n"
+            "2️⃣ *SHA-256 Hash computed*\n"
+            "256-bit fingerprint of every byte\n\n"
+            "3️⃣ *HMAC-SHA256 applied*\n"
+            "Secret key signs the hash — unforgeable\n\n"
+            "4️⃣ *Fingerprint stored*\n"
+            "Only the hash — NOT the document!\n\n"
+            "5️⃣ *Verification*\n"
+            "Re-hash the file → compare → instant result\n\n"
+            "💡 *Why it works:* SHA-256 is a one-way function. "
+            "Changing even 1 bit produces a completely different hash."
+        )
+        await query.edit_message_text(text, parse_mode='Markdown')
+
+    elif data == "guide_register":
+        context.user_data['mode'] = 'register'
+        await query.edit_message_text(
+            "🔒 *Register Mode Active*\n\nSend your document now!",
+            parse_mode='Markdown'
+        )
+
+    elif data == "guide_verify":
+        context.user_data['mode'] = 'verify'
+        await query.edit_message_text(
+            "✅ *Verify Mode Active*\n\nSend your document now!",
+            parse_mode='Markdown'
+        )
+
+    elif data == "my_stats":
+        user_id = str(query.from_user.id)
+        docs = store.get_user_docs(user_id)
+        text = f"📊 *Your Vault:* {len(docs)} document(s) registered."
+        await query.edit_message_text(text, parse_mode='Markdown')
+
+    elif data.startswith("cert_"):
+        doc_id = data[5:]
+        record = store.find_by_doc_id(doc_id)
+        if record:
+            cert = generate_certificate_text(record)
+            await query.edit_message_text(cert, parse_mode='Markdown')
+        else:
+            await query.edit_message_text("❌ Certificate not found.")
+
+    elif data.startswith("do_register_") or data.startswith("do_verify_"):
+        action = "register" if data.startswith("do_register_") else "verify"
+        context.user_data['mode'] = action
+        pending = context.user_data.get('pending_file', {})
+        await query.edit_message_text(
+            f"{'🔒' if action == 'register' else '✅'} Mode set to *{action.upper()}*.\n\n"
+            f"Please resend the document `{pending.get('file_name', '')}` to proceed.",
+            parse_mode='Markdown'
+        )
+
+
+def main():
+    """Start the bot."""
+    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
+        print("=" * 60)
+        print("⚠️  SETUP REQUIRED")
+        print("=" * 60)
+        print("1. Create a bot via @BotFather on Telegram")
+        print("2. Copy the token into your .env file:")
+        print("   TELEGRAM_BOT_TOKEN=your_token_here")
+        print("3. Run: python src/bot.py")
+        print("=" * 60)
+        return
+
+    print("🚀 DocuGuard Bot starting...")
+    app = Application.builder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("register", set_register_mode))
+    app.add_handler(CommandHandler("verify", set_verify_mode))
+    app.add_handler(CommandHandler("mystats", my_stats))
+    app.add_handler(CommandHandler("certificate", get_certificate))
+    app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
+    app.add_handler(CallbackQueryHandler(callback_handler))
+
+    print("✅ Bot is running! Press Ctrl+C to stop.")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+if __name__ == "__main__":
+    main()
