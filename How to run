@@ -1,0 +1,187 @@
+# 🚀 How to Run DocuGuard
+
+Three ways to run — pick based on your situation.
+
+---
+
+## Method 1 — CLI Demo (No Telegram Needed) ⚡
+
+Fastest way to see the cryptography in action. No bot token required.
+
+```bash
+# 1. Clone or download the project
+cd docuguard
+
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Run the demo
+python src/demo_cli.py
+```
+
+**What you'll see:**
+```
+🔐 DOCUGUARD — Cryptographic Document Verification
+
+📌 DEMO 1: REGISTERING A DOCUMENT
+  🆔 Document ID: DG-96C568B3A93AC4093DCCAB2EFBEA17C7
+  🔷 SHA-256:     f1f7b85cef2dbe50fd...
+  🔶 HMAC-SHA256: 7cda44d99d18bab2f0...
+  🔹 SHA3-256:    073f6c5f928814bac6...
+
+📌 DEMO 2: VERIFYING ORIGINAL DOCUMENT
+  ✅ VERIFICATION PASSED — Document is AUTHENTIC!
+
+📌 DEMO 3: DETECTING TAMPERED DOCUMENT
+  🚨 TAMPERING DETECTED! Document has been MODIFIED!
+
+📌 DEMO 4: MERKLE ROOT (BATCH VERIFICATION)
+  🌳 Merkle Root: fda5ea3fbbee5ab888...
+```
+
+---
+
+## Method 2 — Run Unit Tests 🧪
+
+Verify all 26 cryptographic tests pass:
+
+```bash
+pip install pytest
+python -m pytest tests/ -v
+```
+
+Expected: `26 passed in 0.03s`
+
+---
+
+## Method 3 — Full Telegram Bot 🤖
+
+### Prerequisites
+- Python 3.10+
+- A Telegram account
+- Internet connection
+
+### Step 1 — Get a Bot Token
+
+1. Open Telegram → search **@BotFather**
+2. Send: `/newbot`
+3. Enter a name: `DocuGuard`
+4. Enter a username: `docuguard_yourname_bot`
+5. **Copy the token** (looks like `1234567890:ABCdef...`)
+
+### Step 2 — Configure Environment
+
+```bash
+# Copy the template
+cp .env.example .env
+
+# Edit .env
+nano .env        # Linux/Mac
+notepad .env     # Windows
+```
+
+Fill in:
+```env
+TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ
+SECRET_KEY=your-strong-random-key-here
+```
+
+Generate a strong secret key:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### Step 3 — Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### Step 4 — Run the Bot
+
+```bash
+python src/bot.py
+```
+
+You should see:
+```
+🚀 DocuGuard Bot starting...
+✅ Bot is running! Press Ctrl+C to stop.
+```
+
+### Step 5 — Test It on Telegram
+
+1. Open Telegram → search your bot by username
+2. Send `/start`
+3. Send any document file (PDF, DOCX, TXT, etc.)
+4. Choose **Register** → get your fingerprint + Doc ID
+5. Send the **same file** → choose **Verify** → see ✅ AUTHENTIC
+6. Edit the file, send it again → see 🚨 TAMPERED
+
+---
+
+## 🛑 Stopping the Bot
+
+Press `Ctrl + C` in the terminal.
+
+---
+
+## 🔧 Troubleshooting
+
+| Error | Fix |
+|---|---|
+| `ModuleNotFoundError: telegram` | Run `pip install python-telegram-bot==21.5` |
+| `ModuleNotFoundError: dotenv` | Run `pip install python-dotenv` |
+| `Conflict: terminated by other getUpdates` | Only one instance of the bot can run at a time — stop the other one |
+| `Unauthorized` | Your bot token is wrong — double-check `.env` |
+| Bot doesn't respond | Make sure the terminal is still running (bot must stay open) |
+
+---
+
+## 📁 Project Structure
+
+```
+docuguard/
+├── src/
+│   ├── bot.py              ← Telegram bot (run this for full bot)
+│   ├── crypto_engine.py    ← Core cryptography module
+│   ├── document_store.py   ← Hash registry storage
+│   └── demo_cli.py         ← Standalone demo (run this first!)
+├── tests/
+│   └── test_crypto.py      ← 26 unit tests
+├── data/                   ← Auto-created when bot runs
+│   └── registry.json       ← Stored document fingerprints
+├── docs/
+│   ├── GITHUB_UPLOAD_GUIDE.md
+│   └── HOW_TO_RUN.md       ← This file
+├── .env.example            ← Config template
+├── .gitignore
+├── CHANGELOG.md
+├── CONTRIBUTORS.md
+├── LICENSE
+├── README.md
+├── requirements.txt
+└── SECURITY.md
+```
+
+---
+
+## 🔐 How the Cryptography Works
+
+```
+Your Document (any file)
+        │
+        ├──► SHA-256 hash ─────────────────── 64-char fingerprint
+        │    (industry standard, one-way)
+        │
+        ├──► SHA3-256 hash ────────────────── 64-char fingerprint
+        │    (Keccak, next-gen)
+        │
+        ├──► HMAC-SHA256 (+ secret key) ───── authenticated signature
+        │    (only our system can produce this)
+        │
+        └──► Document ID ──────────────────── DG-XXXXXXXXXXXXXXXX
+             SHA256(hash + filename + secret)
+```
+
+Any file modification — even changing one character — produces a **completely different hash**, making tampering instantly detectable.
