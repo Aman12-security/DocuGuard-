@@ -28,8 +28,6 @@
 - [Testing](#-testing)
 - [Security](#-security)
 - [Future Enhancements](#-future-enhancements)
-- [Author](#-author)
-- [License](#-license)
 
 ---
 
@@ -372,26 +370,3 @@ tests/test_crypto.py::TestDocumentStore::test_tamper_detect PASSED
 - [ ] Webhook deployment on Railway / Heroku
 - [ ] Multi-user document sharing & verification
 - [ ] REST API endpoint for external integrations
-
----
-
-## 👨‍💻 Author
-
-**Aman**
-- 🎓 B.Tech CSE (Cybersecurity) — 3rd Year
-- 🏆 EC-Council Certified: CCT, NDE | CEH (In Progress)
-- 🐙 GitHub: [@YOUR_USERNAME](https://github.com/YOUR_USERNAME)
-
-*Built as a cybersecurity portfolio project demonstrating applied cryptography in Python.*
-
----
-
-## 📜 License
-
-This project is licensed under the **MIT License** — see [LICENSE](LICENSE) for details.
-
----
-
-<div align="center">
-⭐ If this project helped you, please give it a star!
-</div>
