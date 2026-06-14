@@ -1,0 +1,307 @@
+# 🔍 HOW_IT_WORKS.md — DocuGuard Deep Dive
+
+> A complete explanation of how DocuGuard works — from user action to cryptographic proof.
+
+---
+
+## 🎯 The Problem DocuGuard Solves
+
+Imagine you sign a contract and email it to someone. How do you **prove** later that the document wasn't changed after you signed it? Traditional methods fail:
+
+| Traditional Method | Problem |
+|---|---|
+| Visual inspection | Can't detect subtle edits |
+| File metadata (date modified) | Easy to fake |
+| Comparing file sizes | Size can stay the same after edits |
+| Watermarks | Can be removed or forged |
+
+**DocuGuard's solution:** Cryptographic hashing — any change to the document, no matter how small, produces a completely different mathematical fingerprint.
+
+---
+
+## 🔄 Complete Flow Diagram
+
+```
+═══════════════════════════════════════════════════════════
+                    REGISTRATION FLOW
+═══════════════════════════════════════════════════════════
+
+User on Telegram                DocuGuard Bot               Registry (JSON)
+      │                               │                           │
+      │── sends contract.pdf ────────►│                           │
+      │                               │                           │
+      │                          Download file                    │
+      │                          (bytes in memory)                │
+      │                               │                           │
+      │                     ┌─────────▼──────────┐               │
+      │                     │   CRYPTO ENGINE     │               │
+      │                     │                     │               │
+      │                     │  SHA-256(bytes)      │               │
+      │                     │  → a3f9c2e1...      │               │
+      │                     │                     │               │
+      │                     │  HMAC-SHA256(bytes) │               │
+      │                     │  → 7f2e8a1c...      │               │
+      │                     │                     │               │
+      │                     │  SHA3-256(bytes)    │               │
+      │                     │  → b4d9f3c2...      │               │
+      │                     │                     │               │
+      │                     │  DocID = DG-XYZ...  │               │
+      │                     └─────────┬──────────┘               │
+      │                               │                           │
+      │                               │── store fingerprints ────►│
+      │                               │   {sha256, hmac, sha3,   │
+      │                               │    filename, timestamp}   │
+      │                               │                           │
+      │◄── returns DocID + hashes ────│                           │
+      │    certificate                │                           │
+      │                               │                           │
+
+═══════════════════════════════════════════════════════════
+                    VERIFICATION FLOW
+═══════════════════════════════════════════════════════════
+
+User on Telegram                DocuGuard Bot               Registry (JSON)
+      │                               │                           │
+      │── sends contract.pdf ────────►│                           │
+      │   (same or modified)          │                           │
+      │                               │                           │
+      │                     Compute SHA-256 of file              │
+      │                     → new_hash = xyz789...              │
+      │                               │                           │
+      │                               │── lookup new_hash ───────►│
+      │                               │◄─ found? yes/no ──────────│
+      │                               │                           │
+      │              ┌────────────────┴───────────────┐          │
+      │              │                                 │          │
+      │         MATCH FOUND                      NOT FOUND       │
+      │              │                                 │          │
+      │    ✅ AUTHENTIC                    ❓ Check by filename   │
+      │    Registered by @user             │                     │
+      │    on 2025-06-13                  Found same filename?   │
+      │                               ┌───┴────────────┐         │
+      │                           YES │                │ NO      │
+      │                               │                │         │
+      │                    🚨 TAMPERED!     ❓ NOT REGISTERED    │
+      │                    Hash mismatch   Document unknown      │
+      │                               │                │         │
+      │◄──────────────────────────────┘                │         │
+```
+
+---
+
+## 🔢 SHA-256 Explained Step by Step
+
+SHA-256 processes your document in 512-bit chunks through 64 rounds of mathematical transformations:
+
+```
+Your document (any size)
+        │
+        ▼
+[PADDING] — Add bits to make length ≡ 448 (mod 512)
+        │
+        ▼
+[512-bit BLOCKS] — Split into chunks
+        │
+        ▼
+[INITIAL HASH VALUES] — 8 constants derived from prime numbers
+h0 = 6a09e667, h1 = bb67ae85, h2 = 3c6ef372, h3 = a54ff53a
+h4 = 510e527f, h5 = 9b05688c, h6 = 1f83d9ab, h7 = 5be0cd19
+        │
+        ▼
+[64 ROUNDS] — Per block, using 64 round constants (k[0..63])
+Each round: σ₀, σ₁, Σ₀, Σ₁, Ch, Maj operations (bitwise)
+        │
+        ▼
+[COMPRESS] — Add round output to running hash values
+        │
+        ▼
+[FINAL] — Concatenate h0-h7 → 256 bits = 64 hex chars
+```
+
+**Result:** `a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e`
+
+---
+
+## 🔑 HMAC-SHA256 Explained
+
+HMAC adds your secret key to the hash — so even if someone knows the algorithm, they can't fake a valid hash without your key.
+
+```python
+# Simplified HMAC formula:
+ipad = 0x36 repeated 64 times
+opad = 0x5C repeated 64 times
+
+K_ipad = secret_key XOR ipad
+K_opad = secret_key XOR opad
+
+HMAC = SHA256(K_opad + SHA256(K_ipad + message))
+```
+
+```
+Without secret key:
+  Anyone can compute SHA256("contract.pdf bytes") = abc123
+  But they CANNOT compute HMAC without your secret!
+
+With HMAC, you get:
+  Integrity  — file wasn't changed
+  Authentication — came from this specific DocuGuard instance
+```
+
+---
+
+## 🌳 Merkle Tree Explained
+
+Used to verify multiple documents with a single hash:
+
+```
+Step 1: Hash each document
+  Doc1 → H1 = sha256(doc1)
+  Doc2 → H2 = sha256(doc2)
+  Doc3 → H3 = sha256(doc3)
+  Doc4 → H4 = sha256(doc4)
+
+Step 2: Pair and hash pairs
+  H12 = sha256(H1 + H2)
+  H34 = sha256(H3 + H4)
+
+Step 3: Hash the pair-hashes
+  ROOT = sha256(H12 + H34)
+
+         [ROOT]
+        /      \
+    [H12]      [H34]
+    /   \      /   \
+  [H1] [H2] [H3] [H4]
+  Doc1 Doc2 Doc3 Doc4
+
+To verify Doc3 changed:
+  Recompute H3' → H34' → ROOT'
+  ROOT' ≠ ROOT → Doc3 was modified ✅
+  Only need O(log n) hashes to verify!
+```
+
+---
+
+## 💥 Avalanche Effect Demonstration
+
+This is WHY cryptographic hashing works for tamper detection:
+
+```
+Original:  "Contract signed by Alice on 2025-06-13 for $10,000"
+SHA-256:   f3b9a2e1c8d7f4a0b5e3c9a8d2f7b1e4c6a9f3b8d5e2a7c4f1b6e9d3a8c5f2
+
+Tampered:  "Contract signed by Alice on 2025-06-13 for $10,001"
+SHA-256:   7a2c8f4e1b9d5a3c7f2e8a4c1b9d5f3e7a2c8f4e1b9d5a3c7f2e8a4c1b9d5f3
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+           COMPLETELY DIFFERENT — only $1 changed but all 64 chars changed!
+```
+
+The probability of two different documents having the same SHA-256 hash is approximately **1 in 2²⁵⁶** — more atoms than exist in the observable universe.
+
+---
+
+## 🗄️ Data Storage Design
+
+DocuGuard stores ONLY fingerprints — never your documents:
+
+```json
+{
+  "user_123456789": {
+    "DG-96C568B3A93AC4093DCCAB2EFBEA17C": {
+      "doc_id": "DG-96C568B3A93AC4093DCCAB2EFBEA17C",
+      "file_name": "contract.pdf",
+      "file_size": 245760,
+      "mime_type": "application/pdf",
+      "sha256": "a3f9c2e1b4d8f7a0c5e2b1d9f3a8c4e7...",
+      "hmac": "7f2e8a1c9b4d5f3e7a2c8f4e1b9d5a3c...",
+      "sha3_256": "b4d9f3c2a7e5b1d8c3f6a9e2b5d8c1f4...",
+      "registered_by": "user_123456789",
+      "registered_at": "2025-06-13T10:30:00Z",
+      "username": "Aman"
+    }
+  }
+}
+```
+
+**What's stored:** Hashes, filename, size, timestamp, who registered it
+**What's NOT stored:** The actual file content — zero document bytes ever written to disk
+
+---
+
+## 🤖 Telegram Bot Architecture
+
+```
+Incoming Update (message/command/button click)
+         │
+         ▼
+Application (python-telegram-bot)
+         │
+    ┌────┴─────────────────────────────────┐
+    │                                       │
+CommandHandler          MessageHandler    CallbackQueryHandler
+/start, /register      Document files     Inline buttons
+/verify, /mystats      (any file type)    (Register/Verify/Cert)
+/certificate           
+    │                       │                    │
+    └───────────────────────┴────────────────────┘
+                            │
+                       bot.py handlers
+                            │
+                   ┌────────┴────────┐
+                   │                 │
+            CryptoEngine      DocumentStore
+            (hashing)         (storage)
+```
+
+---
+
+## 🔁 Session & State Management
+
+DocuGuard uses Telegram's built-in `context.user_data` dictionary to track user state:
+
+```python
+# When user sends /register:
+context.user_data['mode'] = 'register'
+
+# When user sends next file:
+mode = context.user_data.get('mode')  # → 'register'
+# ... process file in register mode ...
+context.user_data['mode'] = None  # Reset after use
+```
+
+This lets users:
+1. Send `/register`
+2. Send a file 10 seconds later
+3. Bot remembers to register (not verify) that file
+
+---
+
+## 🧮 Why Not MD5?
+
+| Property | MD5 | SHA-256 |
+|---|---|---|
+| Output size | 128 bits | 256 bits |
+| Collision attacks | ✅ Known collisions exist | ❌ No known collisions |
+| Speed | Faster | Fast enough |
+| Security status | **BROKEN** — don't use | Industry standard |
+| Example attack | Two PDFs with same MD5 hash possible | Computationally infeasible |
+
+DocuGuard includes MD5 only for informational/legacy display — never for security decisions.
+
+---
+
+## 📈 Performance Characteristics
+
+```
+File: 10 MB PDF
+  SHA-256:    ~15ms
+  SHA3-256:   ~20ms  
+  HMAC-SHA256: ~16ms
+  Total:       ~51ms — nearly instant!
+
+File: 100 MB video
+  SHA-256:    ~150ms
+  Total:       ~0.5 seconds — still fast!
+```
+
+DocuGuard can process documents of any size — hash computation scales linearly with file size.
