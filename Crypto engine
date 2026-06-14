@@ -1,0 +1,152 @@
+"""
+DocuGuard Cryptographic Engine
+Implements SHA-256, HMAC-SHA256, SHA3-256 fingerprinting
+"""
+
+import hashlib
+import hmac as hmac_lib
+import os
+import json
+import time
+from typing import Dict
+
+
+class CryptoEngine:
+    """
+    Multi-algorithm cryptographic fingerprinting engine.
+    
+    Algorithms used:
+    - SHA-256: Industry-standard hash (256-bit output)
+    - HMAC-SHA256: Keyed-hash for tamper detection with secret
+    - SHA3-256: Next-gen hash (Keccak-based, quantum-resistant design)
+    - MD5: Fast check (NOT for security — informational only)
+    """
+
+    def __init__(self, secret_key: str):
+        self.secret_key = secret_key.encode('utf-8')
+
+    def sha256(self, data: bytes) -> str:
+        """Compute SHA-256 hash of data."""
+        return hashlib.sha256(data).hexdigest()
+
+    def sha3_256(self, data: bytes) -> str:
+        """Compute SHA3-256 (Keccak) hash of data."""
+        return hashlib.sha3_256(data).hexdigest()
+
+    def md5(self, data: bytes) -> str:
+        """Compute MD5 (informational/legacy only — NOT security-grade)."""
+        return hashlib.md5(data).hexdigest()
+
+    def hmac_sha256(self, data: bytes) -> str:
+        """
+        Compute HMAC-SHA256 — a keyed hash.
+        Provides authentication: only those with the secret key can produce this.
+        """
+        return hmac_lib.new(self.secret_key, data, hashlib.sha256).hexdigest()
+
+    def generate_doc_id(self, sha256_hash: str, filename: str) -> str:
+        """
+        Generate a unique Document ID by hashing:
+        sha256(file) + filename + secret_key
+        This ties the doc ID to both content and name.
+        """
+        combined = f"{sha256_hash}:{filename}:{self.secret_key.decode()}"
+        return "DG-" + hashlib.sha256(combined.encode()).hexdigest()[:32].upper()
+
+    def generate_fingerprint(self, file_bytes: bytes, filename: str) -> Dict:
+        """
+        Generate complete cryptographic fingerprint for a document.
+        
+        Returns dict with all hashes, HMAC, and doc_id.
+        """
+        sha256_hash = self.sha256(file_bytes)
+        sha3_hash = self.sha3_256(file_bytes)
+        hmac_hash = self.hmac_sha256(file_bytes)
+        md5_hash = self.md5(file_bytes)
+        doc_id = self.generate_doc_id(sha256_hash, filename)
+
+        return {
+            'doc_id': doc_id,
+            'sha256': sha256_hash,
+            'sha3_256': sha3_hash,
+            'hmac': hmac_hash,
+            'md5': md5_hash,  # informational
+            'algorithm_suite': 'SHA256 + HMAC-SHA256 + SHA3-256',
+            'file_size_bytes': len(file_bytes)
+        }
+
+    def verify_integrity(self, file_bytes: bytes, original_sha256: str) -> Dict:
+        """
+        Verify if a file matches an original SHA-256 hash.
+        Returns detailed comparison result.
+        """
+        current_sha256 = self.sha256(file_bytes)
+        current_hmac = self.hmac_sha256(file_bytes)
+        is_match = hmac_lib.compare_digest(current_sha256, original_sha256)
+
+        return {
+            'is_authentic': is_match,
+            'original_sha256': original_sha256,
+            'current_sha256': current_sha256,
+            'current_hmac': current_hmac,
+            'tampered': not is_match,
+            'diff_detected': current_sha256 != original_sha256
+        }
+
+    def compute_merkle_root(self, hash_list: list) -> str:
+        """
+        Compute Merkle root from a list of hashes.
+        Used for verifying batches of documents (like blockchain).
+        
+        If odd number of hashes, duplicates the last one (standard Merkle behavior).
+        """
+        if not hash_list:
+            return hashlib.sha256(b'').hexdigest()
+
+        hashes = [h.encode() if isinstance(h, str) else h for h in hash_list]
+
+        # Single hash: return its SHA-256 to normalize output length
+        if len(hashes) == 1:
+            return hashlib.sha256(hashes[0]).hexdigest()
+
+        while len(hashes) > 1:
+            if len(hashes) % 2 != 0:
+                hashes.append(hashes[-1])  # Duplicate last hash if odd
+            new_level = []
+            for i in range(0, len(hashes), 2):
+                combined = hashes[i] + hashes[i + 1]
+                new_level.append(hashlib.sha256(combined).hexdigest().encode())
+            hashes = new_level
+
+        return hashes[0].decode() if hashes else ''
+
+    @staticmethod
+    def explain_algorithms() -> str:
+        """Return educational explanation of algorithms used."""
+        return """
+╔══════════════════════════════════════════╗
+║     DOCUGUARD CRYPTOGRAPHY SUITE         ║
+╠══════════════════════════════════════════╣
+║ SHA-256 (Secure Hash Algorithm 256-bit)  ║
+║  • Output: 64 hex chars (256 bits)       ║
+║  • One-way function — irreversible       ║
+║  • Deterministic — same input→same hash  ║
+║  • Avalanche effect — 1 bit change →     ║
+║    completely different hash             ║
+╠══════════════════════════════════════════╣
+║ HMAC-SHA256 (Hash-based MAC)             ║
+║  • SHA-256 + Secret Key combined         ║
+║  • Proves the hash came from this system ║
+║  • Forgery-resistant without the key     ║
+╠══════════════════════════════════════════╣
+║ SHA3-256 (Keccak Algorithm)              ║
+║  • NIST standardized (2015)              ║
+║  • Different internal design than SHA-2  ║
+║  • Quantum-resistant design philosophy   ║
+╠══════════════════════════════════════════╣
+║ Document ID (DG-XXXXXXXX)                ║
+║  • SHA256(file_hash + filename + secret) ║
+║  • Unique, reproducible identifier       ║
+║  • Ties content to filename              ║
+╚══════════════════════════════════════════╝
+"""
