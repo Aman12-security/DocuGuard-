@@ -1,0 +1,232 @@
+# ⚙️ DocuGuard — Complete Setup Guide
+
+Detailed installation and configuration guide for Windows, Linux, and macOS.
+
+---
+
+## 📋 Prerequisites
+
+| Requirement | Minimum Version | How to Check |
+|---|---|---|
+| Python | 3.10+ | `python --version` |
+| pip | Latest | `pip --version` |
+| Git | Any | `git --version` |
+| Telegram Account | — | — |
+
+---
+
+## 🪟 Windows
+
+```cmd
+:: Open Command Prompt or PowerShell as normal user
+
+:: 1. Clone the repo
+git clone https://github.com/YOUR_USERNAME/DocuGuard.git
+cd DocuGuard
+
+:: 2. Create virtual environment
+python -m venv venv
+venv\Scripts\activate
+
+:: 3. Install dependencies
+pip install -r requirements.txt
+
+:: 4. Copy config template
+copy .env.example .env
+
+:: 5. Open config in Notepad and fill in values
+notepad .env
+```
+
+---
+
+## 🐧 Linux (Ubuntu / Kali / Parrot)
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/YOUR_USERNAME/DocuGuard.git
+cd DocuGuard
+
+# 2. Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Copy config template
+cp .env.example .env
+
+# 5. Edit config
+nano .env
+```
+
+---
+
+## 🍎 macOS
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/YOUR_USERNAME/DocuGuard.git
+cd DocuGuard
+
+# 2. Create virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Copy config template
+cp .env.example .env
+
+# 5. Edit config
+nano .env        # or: open -e .env
+```
+
+---
+
+## 🤖 Creating Your Telegram Bot
+
+### Step 1 — Open BotFather
+
+1. Open Telegram (app or web)
+2. Search: `@BotFather`
+3. Look for the blue ✅ checkmark (official bot)
+4. Click **START**
+
+### Step 2 — Create the bot
+
+Type and send:
+```
+/newbot
+```
+
+When asked for a **name** (display name):
+```
+DocuGuard
+```
+
+When asked for a **username** (must end with `bot`):
+```
+docuguard_yourname_bot
+```
+*(Replace `yourname` with your name to make it unique)*
+
+### Step 3 — Save your token
+
+BotFather will reply with:
+```
+Done! Congratulations on your new bot. 🎉
+
+Use this token to access the HTTP API:
+7123456789:AAFdef_ghIJKlmNoPQRstUvwXYZabc
+
+Keep your token secure and store it safely,
+it can be used by anyone to control your bot.
+```
+
+**Copy that token — you'll need it next.**
+
+---
+
+## 🔑 Configuring the .env File
+
+Open the `.env` file you created and fill it in:
+
+```env
+# Your Telegram Bot Token from BotFather
+TELEGRAM_BOT_TOKEN=7123456789:AAFdef_ghIJKlmNoPQRstUvwXYZabc
+
+# A strong random secret key (used for HMAC signing)
+SECRET_KEY=a3f9c2e1b4d8f7a0c5e2b1d9f3a8c4e7b2d5f1a6c3e9b7d4f2a8c1e5b3d7f9
+```
+
+Generate your SECRET_KEY with this command:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+> ⚠️ **IMPORTANT:**
+> - Never share your `.env` file
+> - Never commit `.env` to GitHub (`.gitignore` blocks it automatically)
+> - If your token leaks — go to BotFather → `/revoke` → get a new token
+
+---
+
+## ▶️ Running
+
+### Option A — CLI Demo (Test crypto without Telegram)
+```bash
+python src/demo_cli.py
+```
+
+### Option B — Run Unit Tests
+```bash
+python -m pytest tests/ -v
+```
+
+### Option C — Full Telegram Bot
+```bash
+python src/bot.py
+```
+
+You will see:
+```
+🚀 DocuGuard Bot starting...
+✅ Bot is running! Press Ctrl+C to stop.
+```
+
+**Do not close this terminal — the bot runs in it.**
+
+---
+
+## 🧪 Testing the Bot on Telegram
+
+1. Open Telegram → search your bot username
+2. Click **START** or send `/start`
+3. Send any file (PDF, DOCX, TXT, image, etc.)
+4. Bot will ask: **Register** or **Verify?**
+5. Choose **Register** → receive your Document ID and fingerprints
+6. Send the **exact same file** → choose **Verify** → see ✅ AUTHENTIC
+7. Edit the file (add a space, change one word) → send again → see 🚨 TAMPERED
+
+---
+
+## 🛑 Stopping the Bot
+
+Press `Ctrl + C` in the terminal where the bot is running.
+
+---
+
+## 🔧 Troubleshooting
+
+| Error | Cause | Fix |
+|---|---|---|
+| `No module named 'telegram'` | Package not installed | `pip install python-telegram-bot==21.5` |
+| `No module named 'dotenv'` | Package not installed | `pip install python-dotenv` |
+| `Unauthorized` | Wrong bot token | Re-check your `.env` file |
+| `Conflict: terminated by other getUpdates` | Two bot instances running | Kill the other terminal |
+| `ConnectionError` | No internet | Check network connection |
+| Bot receives file but doesn't reply | Token issue or crash | Check terminal output for errors |
+| `python: command not found` (Linux) | Use `python3` instead | `python3 src/bot.py` |
+
+---
+
+## 📁 What Each File Does
+
+| File | Purpose |
+|---|---|
+| `src/bot.py` | Main Telegram bot — handles all commands and messages |
+| `src/crypto_engine.py` | Core cryptography — SHA-256, HMAC-SHA256, SHA3-256, Merkle tree |
+| `src/document_store.py` | JSON registry — stores fingerprints (not file contents) |
+| `src/demo_cli.py` | CLI demo — test all crypto without needing Telegram |
+| `tests/test_crypto.py` | 26 automated unit tests |
+| `.env.example` | Template config — copy this to `.env` |
+| `.env` | Your actual config — NEVER commit this |
+| `.gitignore` | Tells Git to ignore secrets, cache, etc. |
+| `requirements.txt` | Python packages needed |
+| `README.md` | Project overview and documentation |
+| `SETUP.md` | This file |
+| `SECURITY.md` | How to report security vulnerabilities |
+| `LICENSE` | MIT License |
