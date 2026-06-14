@@ -1,0 +1,32 @@
+# Security Policy
+
+## 🔐 Supported Versions
+
+| Version | Supported |
+|---------|-----------|
+| 1.x     | ✅ Yes    |
+
+## 🚨 Reporting a Vulnerability
+
+If you discover a security vulnerability in DocuGuard, **please do NOT open a public GitHub issue**.
+
+Instead:
+1. Email the maintainer directly (see GitHub profile)
+2. Describe the vulnerability and steps to reproduce
+3. Allow up to 7 days for a response and patch
+
+## 🛡️ Security Design Notes
+
+- **No document content is ever stored** — only cryptographic hashes
+- **HMAC-SHA256** is used with a server-side secret to prevent hash forgery
+- **`hmac.compare_digest()`** is used for all hash comparisons to prevent timing attacks
+- **Secret key** must be kept private and rotated if compromised
+- **JSON flat-file** store is for demo/portfolio use only — use PostgreSQL in production
+
+## ⚠️ Important: Change the Secret Key
+
+Before deploying, generate a strong secret key:
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+Set it in your `.env` file. Never commit `.env` to Git.
