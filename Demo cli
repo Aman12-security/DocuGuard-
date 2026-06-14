@@ -1,0 +1,121 @@
+"""
+DocuGuard CLI Demo
+Test the cryptographic engine without needing a Telegram bot.
+Usage: python src/demo_cli.py
+"""
+
+import sys
+import os
+import json
+
+# Add src to path
+sys.path.insert(0, os.path.dirname(__file__))
+
+from crypto_engine import CryptoEngine
+from document_store import DocumentStore
+
+
+def demo():
+    print("\n" + "=" * 60)
+    print("   🔐 DOCUGUARD — Cryptographic Document Verification")
+    print("=" * 60)
+
+    crypto = CryptoEngine("demo-secret-key-for-testing")
+    store = DocumentStore("data/demo_registry.json")
+
+    print(crypto.explain_algorithms())
+
+    # ─── Demo 1: Register a document ───────────────────────────
+    print("\n📌 DEMO 1: REGISTERING A DOCUMENT")
+    print("-" * 40)
+
+    original_content = b"This is the ORIGINAL contract between Alice and Bob. Version 1.0. Date: 2025-06-13."
+    filename = "contract_v1.txt"
+
+    result = crypto.generate_fingerprint(original_content, filename)
+    print(f"File: {filename}")
+    print(f"Content (first 60 chars): {original_content[:60].decode()}")
+    print(f"\n{'':>2}🆔 Document ID: {result['doc_id']}")
+    print(f"{'':>2}🔷 SHA-256:     {result['sha256']}")
+    print(f"{'':>2}🔶 HMAC-SHA256: {result['hmac']}")
+    print(f"{'':>2}🔹 SHA3-256:    {result['sha3_256']}")
+
+    # Store it
+    record = {
+        'doc_id': result['doc_id'],
+        'file_name': filename,
+        'file_size': len(original_content),
+        'sha256': result['sha256'],
+        'hmac': result['hmac'],
+        'sha3_256': result['sha3_256'],
+        'registered_by': 'demo_user',
+        'registered_at': '2025-06-13T10:00:00Z',
+        'username': 'demo_user'
+    }
+    store.register('demo_user', result['doc_id'], record)
+    print(f"\n✅ Document registered successfully!")
+
+    # ─── Demo 2: Verify identical document ─────────────────────
+    print("\n\n📌 DEMO 2: VERIFYING ORIGINAL (UNMODIFIED) DOCUMENT")
+    print("-" * 40)
+
+    same_content = b"This is the ORIGINAL contract between Alice and Bob. Version 1.0. Date: 2025-06-13."
+    verify_result = crypto.generate_fingerprint(same_content, filename)
+
+    found = store.find_by_hash(verify_result['sha256'])
+    if found:
+        print(f"✅ VERIFICATION PASSED — Document is AUTHENTIC!")
+        print(f"   SHA-256 match: {verify_result['sha256'][:32]}...")
+        print(f"   Registered by: @{found['username']} at {found['registered_at']}")
+    else:
+        print("❌ Not found in registry.")
+
+    # ─── Demo 3: Detect tampering ──────────────────────────────
+    print("\n\n📌 DEMO 3: DETECTING TAMPERED DOCUMENT")
+    print("-" * 40)
+
+    tampered_content = b"This is the ORIGINAL contract between Alice and Bob. Version 1.1. Date: 2025-06-13."
+    #                                                                           ^^^
+    #                                                         Changed "1.0" to "1.1"
+
+    tamper_result = crypto.generate_fingerprint(tampered_content, filename)
+    found_tampered = store.find_by_hash(tamper_result['sha256'])
+
+    print(f"Original content (sample): ...Version 1.0...")
+    print(f"Tampered content (sample): ...Version 1.1...")
+    print(f"\n   Original SHA-256: {result['sha256']}")
+    print(f"   Tampered SHA-256: {tamper_result['sha256']}")
+    print(f"\n   {'✅' if result['sha256'] == tamper_result['sha256'] else '❌'} Hash Match: {result['sha256'] == tamper_result['sha256']}")
+
+    if not found_tampered:
+        print("\n🚨 TAMPERING DETECTED! Document has been MODIFIED!")
+        print("   The hash does not match any registered document.")
+
+    # ─── Demo 4: Merkle root for batch ─────────────────────────
+    print("\n\n📌 DEMO 4: MERKLE ROOT (BATCH VERIFICATION)")
+    print("-" * 40)
+
+    docs = [
+        b"Document 1: NDA Agreement",
+        b"Document 2: Employment Contract",
+        b"Document 3: IP Assignment",
+        b"Document 4: Service Agreement"
+    ]
+
+    hashes = [crypto.sha256(d) for d in docs]
+    merkle_root = crypto.compute_merkle_root(hashes)
+
+    print(f"Batch of {len(docs)} documents:")
+    for i, (doc, h) in enumerate(zip(docs, hashes), 1):
+        print(f"  {i}. {doc.decode()[:30]:30s} → {h[:20]}...")
+
+    print(f"\n🌳 Merkle Root: {merkle_root}")
+    print("   (Like a blockchain — one hash to verify all 4 docs!)")
+
+    print("\n" + "=" * 60)
+    print("  ✅ Demo complete! All cryptographic operations verified.")
+    print("=" * 60 + "\n")
+
+
+if __name__ == "__main__":
+    demo()
