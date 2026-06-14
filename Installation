@@ -1,0 +1,223 @@
+# 📦 INSTALL.md — DocuGuard Installation Guide
+
+> Complete installation instructions for Windows, Linux, and macOS.
+
+---
+
+## ✅ System Requirements
+
+| Requirement | Minimum | Recommended |
+|---|---|---|
+| **Python** | 3.10 | 3.11+ |
+| **RAM** | 256 MB | 512 MB |
+| **Storage** | 50 MB | 100 MB |
+| **OS** | Windows 10 / Ubuntu 20.04 / macOS 11 | Latest |
+| **Internet** | Required (for Telegram API) | Stable broadband |
+
+---
+
+## 🔽 Step 1 — Download the Project
+
+**Option A — Using Git (Recommended)**
+```bash
+git clone https://github.com/YOUR_USERNAME/DocuGuard.git
+cd DocuGuard
+```
+
+**Option B — Download ZIP**
+1. Go to the GitHub repo page
+2. Click **Code** → **Download ZIP**
+3. Extract the ZIP
+4. Open terminal inside the extracted folder
+
+---
+
+## 🐍 Step 2 — Install Python
+
+### Windows
+1. Go to https://python.org/downloads
+2. Download Python 3.11+ installer
+3. **✅ Check "Add Python to PATH"** during install
+4. Verify: open Command Prompt → `python --version`
+
+### Linux (Ubuntu/Debian)
+```bash
+sudo apt update
+sudo apt install python3 python3-pip python3-venv -y
+python3 --version
+```
+
+### macOS
+```bash
+brew install python3
+python3 --version
+```
+
+---
+
+## 🧪 Step 3 — Create Virtual Environment (Recommended)
+
+A virtual environment keeps DocuGuard's dependencies isolated from your system Python.
+
+### Windows
+```cmd
+python -m venv venv
+venv\Scripts\activate
+```
+You'll see `(venv)` appear in your prompt — that means it's active.
+
+### Linux / macOS
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
+
+To deactivate later: `deactivate`
+
+---
+
+## 📦 Step 4 — Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+This installs:
+- `python-telegram-bot==21.5` — Telegram Bot API
+- `python-dotenv==1.0.1` — Load .env config
+- `cryptography==43.0.1` — Crypto primitives
+- `Pillow==10.4.0` — Image processing
+- `qrcode==7.4.2` — QR code generation
+
+Verify installation:
+```bash
+pip list | grep -E "telegram|dotenv|cryptography|Pillow"
+```
+
+---
+
+## 🤖 Step 5 — Create Telegram Bot
+
+1. Open **Telegram** on your phone or PC
+2. Search for `@BotFather` (must have blue verified checkmark ✅)
+3. Tap **START**
+4. Send: `/newbot`
+5. When asked for a **name**: type `DocuGuard`
+6. When asked for a **username**: type `docuguard_YOURNAME_bot`
+   *(username must end in `bot` and be unique)*
+7. BotFather replies with your **token** — copy it!
+
+Token looks like:
+```
+1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ-abc123
+```
+
+---
+
+## ⚙️ Step 6 — Configure Environment
+
+```bash
+# Linux/macOS
+cp .env.example .env
+
+# Windows
+copy .env.example .env
+```
+
+Open `.env` in any text editor and fill in:
+
+```env
+TELEGRAM_BOT_TOKEN=1234567890:ABCdefGHIjklMNOpqrSTUvwxYZ-abc123
+SECRET_KEY=paste-your-generated-secret-key-here
+```
+
+Generate your SECRET_KEY (run this command):
+```bash
+python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+Example output:
+```
+a3f9c2e1b4d8f7a0c5e2b1d9f3a8c4e7b2d5f1a6c3e9b7d4f2a8c1e5b3d7f9a
+```
+
+Copy that output and paste it as your `SECRET_KEY`.
+
+> ⚠️ **Keep `.env` private — never share it or upload to GitHub!**
+
+---
+
+## ▶️ Step 7 — Run DocuGuard
+
+### Quick Test (No Telegram needed)
+```bash
+python src/demo_cli.py
+```
+If you see SHA-256 hashes printed — everything is working! ✅
+
+### Run Unit Tests
+```bash
+python -m pytest tests/ -v
+```
+Expected: `26 passed`
+
+### Start the Bot
+```bash
+python src/bot.py
+```
+
+Expected output:
+```
+🚀 DocuGuard Bot starting...
+✅ Bot is running! Press Ctrl+C to stop.
+```
+
+Open Telegram → search your bot → send `/start` 🎉
+
+---
+
+## 🛑 Stopping the Bot
+
+Press `Ctrl + C` in the terminal.
+
+---
+
+## 🔧 Troubleshooting
+
+| Problem | Cause | Solution |
+|---|---|---|
+| `python: command not found` | Python not installed or not in PATH | Reinstall Python, check "Add to PATH" |
+| `No module named 'telegram'` | Dependencies not installed | `pip install -r requirements.txt` |
+| `No module named 'dotenv'` | python-dotenv missing | `pip install python-dotenv` |
+| `Unauthorized` error | Wrong bot token | Check `.env` — copy token exactly from BotFather |
+| `Conflict: terminated by other getUpdates` | Two bot instances running | Close all terminals, restart with one `python src/bot.py` |
+| Bot doesn't respond on Telegram | Bot crashed / terminal closed | Keep terminal open, check for error messages |
+| `FileNotFoundError: .env` | .env file missing | Run `cp .env.example .env` and fill it in |
+
+---
+
+## 📁 After Installation — What Gets Created
+
+```
+DocuGuard/
+├── venv/                ← Virtual environment (if you created one)
+├── data/
+│   └── registry.json   ← Auto-created when first document is registered
+└── ...
+```
+
+The `data/` folder stores only cryptographic hashes — never document contents.
+
+---
+
+## ✅ Installation Checklist
+
+- [ ] Python 3.10+ installed (`python --version`)
+- [ ] Virtual environment created and activated
+- [ ] `pip install -r requirements.txt` completed without errors
+- [ ] Telegram bot created via @BotFather — token copied
+- [ ] `.env` file created with token and secret key
+- [ ] `python src/demo_cli.py` shows hash output
+- [ ] `python -m pytest tests/ -v` shows `26 passed`
+- [ ] `python src/bot.py` shows "Bot is running!"
+- [ ] Bot responds to `/start` on Telegram
