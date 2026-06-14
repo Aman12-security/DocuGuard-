@@ -1,0 +1,277 @@
+# 🔬 Tools & Techniques — DocuGuard
+
+> A complete technical reference for every tool, library, algorithm, and concept used in DocuGuard.
+
+---
+
+## 🐍 Core Language
+
+### Python 3.10+
+- **Why:** Cross-platform, rich standard library (hashlib, hmac built-in), async support via `asyncio`
+- **Key features used:** `asyncio`, type hints, f-strings, dataclasses, pathlib
+- **Version requirement:** 3.10+ for `match/case` syntax support
+
+---
+
+## 📚 Libraries & Frameworks
+
+### 1. python-telegram-bot (v21.5)
+| Property | Detail |
+|---|---|
+| **Purpose** | Async Telegram Bot API wrapper |
+| **Install** | `pip install python-telegram-bot==21.5` |
+| **Docs** | https://python-telegram-bot.readthedocs.io |
+| **Key classes used** | `Application`, `CommandHandler`, `MessageHandler`, `CallbackQueryHandler`, `InlineKeyboardMarkup` |
+| **Why v21?** | Uses native `asyncio` — no deprecated threading |
+
+### 2. hashlib (Python stdlib)
+| Property | Detail |
+|---|---|
+| **Purpose** | SHA-256, SHA3-256, MD5 hash computation |
+| **Install** | Built-in — no install needed |
+| **Key functions** | `hashlib.sha256()`, `hashlib.sha3_256()`, `hashlib.md5()` |
+| **Used for** | Document fingerprinting |
+
+### 3. hmac (Python stdlib)
+| Property | Detail |
+|---|---|
+| **Purpose** | Keyed-hash message authentication code |
+| **Install** | Built-in — no install needed |
+| **Key functions** | `hmac.new()`, `hmac.compare_digest()` |
+| **Security note** | `compare_digest()` is timing-safe (prevents timing attacks) |
+
+### 4. python-dotenv (v1.0.1)
+| Property | Detail |
+|---|---|
+| **Purpose** | Load environment variables from `.env` file |
+| **Install** | `pip install python-dotenv` |
+| **Used for** | Secure storage of bot token and secret key |
+
+### 5. cryptography (v43.0.1)
+| Property | Detail |
+|---|---|
+| **Purpose** | Extended cryptographic primitives |
+| **Install** | `pip install cryptography` |
+| **Used for** | RSA support (future), AES primitives |
+
+### 6. Pillow (v10.4.0)
+| Property | Detail |
+|---|---|
+| **Purpose** | Image processing library |
+| **Install** | `pip install Pillow` |
+| **Used for** | Certificate image generation |
+
+### 7. qrcode (v7.4.2)
+| Property | Detail |
+|---|---|
+| **Purpose** | QR code generation |
+| **Install** | `pip install qrcode[pil]` |
+| **Used for** | Embedding document ID in certificates as scannable QR |
+
+### 8. pytest
+| Property | Detail |
+|---|---|
+| **Purpose** | Unit testing framework |
+| **Install** | `pip install pytest` |
+| **Used for** | 26 automated tests for all crypto functions |
+
+---
+
+## 🔐 Cryptographic Algorithms
+
+### SHA-256 (Secure Hash Algorithm 256-bit)
+
+```
+Input:  Any file (bytes)
+Output: 64 hexadecimal characters = 256 bits
+
+Example:
+  Input:  "Hello World"
+  Output: a591a6d40bf420404a011733cfb7b190d62c65bf0bcda32b57b277d9ad9f146e
+
+Properties:
+  ✅ Deterministic    — same input always gives same output
+  ✅ One-way          — cannot reverse hash to get original
+  ✅ Collision-resistant — virtually impossible to find two inputs with same hash
+  ✅ Avalanche effect — 1 bit change → completely different 256-bit output
+  ✅ Fixed output     — always 64 chars regardless of input size
+```
+
+**Used in:** Bitcoin, TLS/SSL certificates, digital signatures, Git commits
+
+---
+
+### HMAC-SHA256 (Hash-based Message Authentication Code)
+
+```
+Input:  File bytes + Secret Key
+Output: 64 hexadecimal characters
+
+Formula: HMAC(K, m) = H((K ⊕ opad) || H((K ⊕ ipad) || m))
+  Where: K = secret key, m = message, H = SHA-256
+
+Properties:
+  ✅ Authentication  — proves message came from key holder
+  ✅ Integrity       — detects any modification
+  ✅ Forgery-resistant — useless without the secret key
+  ✅ Timing-safe     — compare_digest() prevents timing attacks
+```
+
+**Used in:** JWT tokens, API authentication, webhook signatures, TLS
+
+---
+
+### SHA3-256 (Keccak Algorithm)
+
+```
+Input:  Any file (bytes)
+Output: 64 hexadecimal characters = 256 bits
+
+Key difference from SHA-256:
+  SHA-2 family uses Merkle-Damgård construction
+  SHA-3 uses Sponge construction (completely different math)
+
+Why both?
+  If SHA-256 were ever broken, SHA3-256 provides independent backup
+  Two independent hash matches = extremely high confidence
+```
+
+**Standardized:** NIST FIPS 202 (2015)
+
+---
+
+### Merkle Tree
+
+```
+Documents: [Doc1, Doc2, Doc3, Doc4]
+Hashes:    [H1,   H2,   H3,   H4  ]
+
+Level 1:   [H(H1+H2),    H(H3+H4)   ]
+Level 2:   [H(H(H1+H2) + H(H3+H4)) ] ← Merkle Root
+
+Properties:
+  ✅ One root hash verifies ALL documents
+  ✅ O(log n) verification — efficient for large batches
+  ✅ Foundation of blockchain (Bitcoin, Ethereum use Merkle trees)
+  ✅ If any document changes → root hash changes
+```
+
+**Used in:** Bitcoin (transaction verification), Git (repository integrity), Certificate Transparency
+
+---
+
+### Document ID Generation
+
+```
+Formula:
+  doc_id = "DG-" + SHA256(file_hash + ":" + filename + ":" + secret_key)[:32].upper()
+
+Example:
+  file_hash = "a3f9c2e1..."
+  filename  = "contract.pdf"
+  secret    = "my-secret"
+  
+  combined  = "a3f9c2e1...:contract.pdf:my-secret"
+  doc_id    = "DG-96C568B3A93AC4093DCCAB2EFBEA17C"
+
+Properties:
+  ✅ Reproducible  — same file always generates same DocID
+  ✅ Tied to content — filename change → different DocID
+  ✅ Secret-bound  — only this system can generate valid DocIDs
+  ✅ Human-readable — DG- prefix makes it recognizable
+```
+
+---
+
+## 🏗️ Architecture & Design Patterns
+
+### 1. Separation of Concerns
+```
+bot.py          ← Telegram UI layer (commands, messages, callbacks)
+crypto_engine.py ← Pure cryptography (no Telegram dependencies)
+document_store.py ← Data persistence (no crypto dependencies)
+demo_cli.py     ← Testing layer (no Telegram needed)
+```
+
+### 2. Repository Pattern (document_store.py)
+- Abstracts data storage behind an interface
+- Can swap JSON → PostgreSQL without changing bot.py
+
+### 3. Strategy Pattern
+- CryptoEngine exposes consistent interface
+- Multiple algorithms run in parallel, independently
+
+### 4. Event-Driven Architecture (python-telegram-bot)
+- Bot handlers respond to events (commands, file uploads, button clicks)
+- Async/await prevents blocking on API calls
+
+---
+
+## 🛡️ Security Techniques
+
+| Technique | Implementation | Purpose |
+|---|---|---|
+| **Timing-safe comparison** | `hmac.compare_digest()` | Prevents timing-based attacks on hash comparison |
+| **Keyed MAC** | HMAC-SHA256 with secret | Prevents hash forgery |
+| **Secrets in environment** | `.env` + python-dotenv | Keeps bot token out of source code |
+| **No file storage** | Only hashes stored | User documents never touch our disk |
+| **Git-ignored secrets** | `.gitignore` blocks `.env` | Prevents accidental credential leak |
+| **Secret binding** | DocID includes secret | DocIDs cannot be forged externally |
+
+---
+
+## 🧪 Testing Approach
+
+### Test Categories (26 total)
+```
+TestSHA256      (4 tests) — known hashes, empty input, avalanche effect, large files
+TestHMAC        (4 tests) — correct HMAC, wrong key fails, timing-safety, empty data  
+TestSHA3        (2 tests) — produces valid hash, differs from SHA-256
+TestDocumentID  (3 tests) — format validation, reproducibility, filename sensitivity
+TestFingerprint (3 tests) — all fields present, file size, tamper detection
+TestMerkleRoot  (5 tests) — single hash, empty list, two hashes, determinism, order matters
+TestDocumentStore (5 tests) — register/retrieve, find by hash, missing hash, user isolation, delete
+```
+
+### Testing Philosophy
+- **Unit tests** — each crypto function tested independently
+- **Known-value tests** — compare against Python's own hashlib expected values
+- **Negative tests** — verify failures when expected (wrong key, tampered data)
+- **Determinism tests** — same input must always produce same output
+
+---
+
+## 🌐 APIs Used
+
+### Telegram Bot API
+- **Endpoint:** `https://api.telegram.org/bot{TOKEN}/`
+- **Method:** Long polling (`getUpdates`)
+- **File download:** `getFile` → download URL → bytes
+- **Rate limits:** 30 messages/second per bot
+- **Docs:** https://core.telegram.org/bots/api
+
+---
+
+## 📊 Complexity Analysis
+
+| Operation | Time Complexity | Space Complexity |
+|---|---|---|
+| SHA-256 hash | O(n) where n = file size | O(1) output |
+| HMAC-SHA256 | O(n) | O(1) output |
+| SHA3-256 | O(n) | O(1) output |
+| Merkle tree build | O(n log n) | O(n) |
+| Merkle root verify | O(log n) | O(log n) |
+| Registry lookup by hash | O(d) where d = total docs | O(1) per user |
+
+---
+
+## 📌 Comparison: DocuGuard vs Traditional Methods
+
+| Method | DocuGuard (SHA-256) | MD5 (old) | Visual inspection |
+|---|---|---|---|
+| Detects 1-byte change | ✅ Yes | ✅ Yes | ❌ No |
+| Collision-resistant | ✅ Yes | ❌ No (broken) | ❌ No |
+| Machine-verifiable | ✅ Yes | ✅ Yes | ❌ No |
+| Speed | ✅ Fast | ✅ Faster | ❌ Slow |
+| Used in industry | ✅ Standard | ❌ Deprecated | ❌ Not scalable |
+| Forgery resistant | ✅ With HMAC | ❌ No | ❌ No |
