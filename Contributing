@@ -1,0 +1,94 @@
+# 🤝 Contributing to DocuGuard
+
+Thank you for your interest in contributing! Here's how to get involved.
+
+---
+
+## 🐛 Reporting Bugs
+
+1. Check [Issues](../../issues) — it may already be reported
+2. Open a new issue with:
+   - **Title:** Short description
+   - **Steps to reproduce:** Exact commands / actions
+   - **Expected behavior:** What should happen
+   - **Actual behavior:** What actually happens
+   - **Environment:** OS, Python version, output of `pip list`
+
+---
+
+## 💡 Suggesting Features
+
+Open an issue with tag `[Feature Request]` and describe:
+- What you want added
+- Why it would be useful
+- Any implementation ideas
+
+---
+
+## 🔧 Making Code Changes
+
+```bash
+# 1. Fork the repo on GitHub
+
+# 2. Clone your fork
+git clone https://github.com/YOUR_USERNAME/DocuGuard.git
+cd DocuGuard
+
+# 3. Create a branch
+git checkout -b feature/your-feature-name
+
+# 4. Make changes
+
+# 5. Run tests — all 26 must pass!
+python -m pytest tests/ -v
+
+# 6. Commit
+git commit -m "✨ Add: description of your change"
+
+# 7. Push
+git push origin feature/your-feature-name
+
+# 8. Open a Pull Request on GitHub
+```
+
+---
+
+## 📋 Commit Message Format
+
+```
+✨ Add:    New feature
+🐛 Fix:    Bug fix
+📝 Docs:   Documentation
+♻️  Refactor: Code cleanup (no behavior change)
+✅ Test:   Adding or fixing tests
+🔐 Security: Security improvement
+```
+
+---
+
+## 🧪 Running Tests Before PR
+
+```bash
+pip install pytest
+python -m pytest tests/ -v
+# Must show: 26 passed
+```
+
+---
+
+## 📜 Code Style
+
+- Follow PEP 8
+- Docstrings on all functions
+- Type hints on function signatures
+- Comments explaining cryptographic steps
+
+---
+
+## 👥 Code of Conduct
+
+- Be respectful and constructive
+- Focus on the code, not the person
+- Welcome newcomers
+
+By contributing, you agree your code will be licensed under the MIT License.
